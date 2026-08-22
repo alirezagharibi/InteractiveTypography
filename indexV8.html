@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Rive Distance Detection</title>
+
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #000;
+        overflow: hidden;
+        color: #f4f7fb;
+        font-family: Arial, sans-serif;
+      }
+
+      canvas {
+        width: 100vw;
+        height: 100vh;
+        display: block;
+      }
+
+      #rive-source {
+        position: fixed;
+        inset: 0;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #status {
+        position: fixed;
+        top: 15px;
+        left: 15px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 10px;
+        font: 12px monospace;
+        border-radius: 8px;
+        z-index: 10;
+      }
+
+      #webcam {
+        z-index: 10;
+      }
+
+      #settings-edge {
+        position: fixed;
+        top: 50%;
+        left: 0;
+        width: 7px;
+        height: 46px;
+        border: 0;
+        border-radius: 0 8px 8px 0;
+        background: #d9f7ff;
+        box-shadow: 0 0 5px #fff, 0 0 16px #6ee7ff;
+        opacity: 0;
+        transform: translateY(-50%) scaleX(0.7);
+        transition: opacity 140ms ease, transform 140ms ease;
+        cursor: pointer;
+        z-index: 30;
+      }
+
+      #settings-edge.visible,
+      #settings-edge:hover {
+        opacity: 0.95;
+        transform: translateY(-50%) scaleX(1);
+      }
+
+      #settings-menu {
+        position: fixed;
+        top: 50%;
+        left: 18px;
+        width: min(430px, calc(100vw - 36px));
+        max-height: calc(100vh - 36px);
+        padding: 14px;
+        display: none;
+        flex-direction: column;
+        gap: 12px;
+        background: rgba(15, 21, 28, 0.96);
+        border: 1px solid rgba(180, 222, 235, 0.35);
+        border-radius: 10px;
+        box-shadow: 0 12px 42px rgba(0, 0, 0, 0.55), 0 0 22px rgba(110, 231, 255, 0.16);
+        transform: translateY(-50%);
+        z-index: 25;
+      }
+
+      #settings-menu.open {
+        display: flex;
+      }
+
+      .settings-tabs {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 3px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+        padding-bottom: 8px;
+      }
+
+      .settings-tabs button,
+      .settings-actions button,
+      .confirm-actions button {
+        min-height: 32px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.07);
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        font-size: 11px;
+      }
+
+      .settings-tabs button {
+        padding: 5px 2px;
+        font-size: 10px;
+      }
+
+      .settings-tabs button.active,
+      .settings-actions button:first-child {
+        border-color: #79e9ff;
+        background: rgba(71, 185, 212, 0.24);
+      }
+
+      .settings-panel {
+        display: none;
+        overflow: auto;
+        min-height: 80px;
+        max-height: 52vh;
+      }
+
+      .settings-panel.active {
+        display: block;
+      }
+
+      .parameter-row {
+        display: grid;
+        grid-template-columns: 1fr minmax(116px, 42%);
+        align-items: center;
+        gap: 12px;
+        min-height: 42px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+      }
+
+      .parameter-row label {
+        color: #d9e5ea;
+        font-size: 12px;
+      }
+
+      .parameter-row input[type="number"] {
+        width: 100%;
+        padding: 6px 7px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 5px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #fff;
+        font: 12px monospace;
+      }
+
+      .parameter-row input[type="number"]::placeholder {
+        color: #91a3aa;
+      }
+
+      .range-control {
+        display: grid;
+        grid-template-columns: 1fr 35px;
+        gap: 7px;
+        align-items: center;
+      }
+
+      .range-control output {
+        color: #9fefff;
+        font: 11px monospace;
+        text-align: right;
+      }
+
+      input[type="range"] {
+        accent-color: #79e9ff;
+        width: 100%;
+      }
+
+      .toggle {
+        justify-self: end;
+        width: 38px;
+        height: 21px;
+        accent-color: #79e9ff;
+      }
+
+      .settings-actions {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+      }
+
+      .settings-actions button:last-child {
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      #reset-dialog {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        background: rgba(0, 0, 0, 0.58);
+        z-index: 40;
+      }
+
+      #reset-dialog.open {
+        display: grid;
+      }
+
+      .confirm-box {
+        width: min(300px, calc(100vw - 40px));
+        padding: 17px;
+        border: 1px solid rgba(180, 222, 235, 0.35);
+        border-radius: 8px;
+        background: #111820;
+        box-shadow: 0 10px 35px #000;
+      }
+
+      .confirm-box p {
+        margin-bottom: 16px;
+        font-size: 13px;
+      }
+
+      .confirm-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .confirm-actions button:last-child {
+        border-color: #ff9b8f;
+        color: #ffb2a9;
+      }
+
+      .dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 5px;
+      }
+
+      video {
+        position: fixed;
+        right: 15px;
+        bottom: 15px;
+        width: 160px;
+        border-radius: 10px;
+        transform: scaleX(-1);
+      }
+    </style>
+  </head>
+
+  <body>
+    <canvas id="rive-canvas"></canvas>
+    <canvas id="rive-source"></canvas>
+
+    <video id="webcam" autoplay muted playsinline></video>
+
+    <div id="status">
+      <div>
+        <span class="dot" id="camDot"></span>
+        Camera:
+        <span id="camText">loading</span>
+      </div>
+
+      <div>
+        <span class="dot" id="personDot"></span>
+        Person:
+        <span id="personText">---</span>
+      </div>
+
+      <div>
+        Distance:
+        <span id="distanceText">---</span>
+      </div>
+    </div>
+
+    <button id="settings-edge" aria-label="Open settings"></button>
+
+    <section id="settings-menu" aria-label="Settings">
+      <div class="settings-tabs">
+        <button class="active" data-tab="effects">Effects</button>
+        <button data-tab="panels">Panels</button>
+        <button data-tab="subject">Subject Detection</button>
+        <button data-tab="audio">Audio</button>
+        <button data-tab="camera">Camera</button>
+      </div>
+      <div class="settings-panel active" data-panel="effects"></div>
+      <div class="settings-panel" data-panel="panels"></div>
+      <div class="settings-panel" data-panel="subject"></div>
+      <div class="settings-panel" data-panel="audio"></div>
+      <div class="settings-panel" data-panel="camera"></div>
+      <div class="settings-actions">
+        <button id="apply-settings">Apply</button>
+        <button id="reset-settings">Reset</button>
+        <button id="exit-settings">Exit</button>
+      </div>
+    </section>
+
+    <div id="reset-dialog" role="dialog" aria-modal="true">
+      <div class="confirm-box">
+        <p>Restore all parameters to their original defaults?</p>
+        <div class="confirm-actions">
+          <button id="cancel-reset">Cancel</button>
+          <button id="confirm-reset">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/@rive-app/webgl2@2"></script>
+
+    <script type="module">
+      import {
+        FilesetResolver,
+        PoseLandmarker,
+      } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18";
+
+      // =============================
+      // Distance Settings
+      // =============================
+
+      const DEFAULT_SETTINGS = {
+        ENABLE_CHROMATIC_ABERRATION: true,
+        RED_CYAN_PIXELS: 10,
+        GREEN_MAGENTA_PIXELS: 0,
+        BLUE_YELLOW_PIXELS: 0,
+        STATUS_ENABLED: true,
+        WEBCAM_ENABLED: false,
+        DIST_MIN_CM: 100,
+        DIST_MAX_CM: 200,
+        REF_SHOULDER_PX_AT_60CM: 220,
+        REF_DIST_CM: 60,
+        SMOOTH: 0.2,
+        TRACK_HOLD_MS: 900,
+        LANDMARK_CONFIDENCE: 0.28,
+        AUDIO_SMOOTH: 0.05,
+        smoothDistance: 0,
+        lastDistanceCm: 130,
+        noiseVolume: 1,
+        musicVolume: 0,
+        soundEnabled: true,
+      };
+
+      const SETTINGS_STORAGE_KEY = "rive-distance-settings";
+      let settings = { ...DEFAULT_SETTINGS };
+      try {
+        const savedSettings = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY));
+        if (savedSettings && typeof savedSettings === "object") {
+          settings = { ...settings, ...savedSettings };
+        }
+      } catch (error) {
+        console.warn("Unable to read saved settings:", error);
+      }
+
+      const {
+        DIST_MIN_CM, DIST_MAX_CM, REF_SHOULDER_PX_AT_60CM, REF_DIST_CM,
+        SMOOTH, TRACK_HOLD_MS, LANDMARK_CONFIDENCE, AUDIO_SMOOTH,
+      } = settings;
+
+      let smoothDistance = Number(settings.smoothDistance);
+
+      let lastPoseTime = -Infinity;
+
+      let lastDistanceCm = Number(settings.lastDistanceCm);
+
+      // =============================
+      // Audio Crossfade
+      // =============================
+
+      const noiseAudio = new Audio("noise.mp3");
+
+      const musicAudio = new Audio("music.mp3");
+
+      let noiseVolume = Number(settings.noiseVolume);
+
+      let musicVolume = Number(settings.musicVolume);
+
+      let audioStarted = false;
+
+      let soundEnabled = settings.soundEnabled;
+
+      let audioLoopRunning = false;
+
+      [noiseAudio, musicAudio].forEach((audio) => {
+        audio.loop = true;
+
+        audio.preload = "auto";
+
+        audio.playsInline = true;
+      });
+
+      function updateAudioVolumes(distance) {
+        if (!soundEnabled) {
+          noiseAudio.volume = 0;
+          musicAudio.volume = 0;
+          return;
+        }
+
+        const mix = Math.max(0, Math.min(1, distance / 100));
+
+        const targetNoiseVolume = 1 - mix;
+
+        const targetMusicVolume = mix;
+
+        noiseVolume += (targetNoiseVolume - noiseVolume) * AUDIO_SMOOTH;
+
+        musicVolume += (targetMusicVolume - musicVolume) * AUDIO_SMOOTH;
+
+        noiseAudio.volume = Math.max(0, Math.min(1, noiseVolume));
+
+        musicAudio.volume = Math.max(0, Math.min(1, musicVolume));
+      }
+
+      function startAudio() {
+        if (audioStarted || !soundEnabled) return;
+
+        const playNoise = noiseAudio.play();
+
+        const playMusic = musicAudio.play();
+
+        Promise.all([playNoise, playMusic])
+          .then(() => {
+            audioStarted = true;
+          })
+          .catch((error) => {
+            console.warn("Audio playback needs user interaction:", error);
+          });
+      }
+
+      function stopAudio() {
+        noiseAudio.pause();
+        musicAudio.pause();
+        noiseAudio.currentTime = 0;
+        musicAudio.currentTime = 0;
+        noiseAudio.volume = 0;
+        musicAudio.volume = 0;
+        audioStarted = false;
+      }
+
+      function audioLoop() {
+        if (!soundEnabled) {
+          stopAudio();
+          audioLoopRunning = false;
+          return;
+        }
+
+        updateAudioVolumes(smoothDistance);
+
+        requestAnimationFrame(audioLoop);
+      }
+
+      function ensureAudioLoop() {
+        if (audioLoopRunning || !soundEnabled) return;
+
+        audioLoopRunning = true;
+        requestAnimationFrame(audioLoop);
+      }
+
+      ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+        window.addEventListener(eventName, startAudio);
+      });
+
+      // =============================
+      // Rive
+      // =============================
+
+      let distanceInput = null;
+
+      let enterInput = null;
+
+      const canvas = document.getElementById("rive-source");
+
+      const outputCanvas = document.getElementById("rive-canvas");
+      const compositor = outputCanvas.getContext("webgl2", {
+        alpha: false,
+        antialias: false,
+        depth: false,
+        stencil: false,
+        preserveDrawingBuffer: false,
+        powerPreference: "high-performance",
+      });
+
+      if (!compositor) {
+        throw new Error("WebGL2 is required for the post-processing pass.");
+      }
+
+      const vertexShader = compositor.createShader(compositor.VERTEX_SHADER);
+      compositor.shaderSource(
+        vertexShader,
+        `#version 300 es
+        in vec2 position;
+        out vec2 uv;
+        void main() {
+          uv = position * 0.5 + 0.5;
+          gl_Position = vec4(position, 0.0, 1.0);
+        }`
+      );
+      compositor.compileShader(vertexShader);
+
+      const fragmentShader = compositor.createShader(compositor.FRAGMENT_SHADER);
+      compositor.shaderSource(
+        fragmentShader,
+        `#version 300 es
+        precision highp float;
+        uniform sampler2D frame;
+        uniform vec2 texelSize;
+        uniform float redCyan;
+        uniform float greenMagenta;
+        uniform float blueYellow;
+        uniform bool chromaticEnabled;
+        in vec2 uv;
+        out vec4 color;
+
+        void main() {
+          if (!chromaticEnabled) {
+            color = texture(frame, uv);
+            return;
+          }
+
+          float red = texture(frame, uv + texelSize * redCyan).r;
+          float green = texture(frame, uv + texelSize * greenMagenta).g;
+          float blue = texture(frame, uv + texelSize * blueYellow).b;
+          color = vec4(red, green, blue, 1.0);
+        }`
+      );
+      compositor.compileShader(fragmentShader);
+
+      const postProcessProgram = compositor.createProgram();
+      compositor.attachShader(postProcessProgram, vertexShader);
+      compositor.attachShader(postProcessProgram, fragmentShader);
+      compositor.bindAttribLocation(postProcessProgram, 0, "position");
+      compositor.linkProgram(postProcessProgram);
+
+      const quad = compositor.createBuffer();
+      compositor.bindBuffer(compositor.ARRAY_BUFFER, quad);
+      compositor.bufferData(
+        compositor.ARRAY_BUFFER,
+        new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]),
+        compositor.STATIC_DRAW
+      );
+
+      const frameTexture = compositor.createTexture();
+      compositor.bindTexture(compositor.TEXTURE_2D, frameTexture);
+      compositor.texParameteri(compositor.TEXTURE_2D, compositor.TEXTURE_MIN_FILTER, compositor.LINEAR);
+      compositor.texParameteri(compositor.TEXTURE_2D, compositor.TEXTURE_MAG_FILTER, compositor.LINEAR);
+      compositor.texParameteri(compositor.TEXTURE_2D, compositor.TEXTURE_WRAP_S, compositor.CLAMP_TO_EDGE);
+      compositor.texParameteri(compositor.TEXTURE_2D, compositor.TEXTURE_WRAP_T, compositor.CLAMP_TO_EDGE);
+
+      const positionLocation = 0;
+      const texelSizeLocation = compositor.getUniformLocation(postProcessProgram, "texelSize");
+      const redCyanLocation = compositor.getUniformLocation(postProcessProgram, "redCyan");
+      const greenMagentaLocation = compositor.getUniformLocation(postProcessProgram, "greenMagenta");
+      const blueYellowLocation = compositor.getUniformLocation(postProcessProgram, "blueYellow");
+      const chromaticEnabledLocation = compositor.getUniformLocation(postProcessProgram, "chromaticEnabled");
+
+      function renderPostProcess(time) {
+        const width = canvas.width;
+        const height = canvas.height;
+        if (!width || !height) {
+          requestAnimationFrame(renderPostProcess);
+          return;
+        }
+
+        if (outputCanvas.width !== width || outputCanvas.height !== height) {
+          outputCanvas.width = width;
+          outputCanvas.height = height;
+        }
+
+        compositor.viewport(0, 0, width, height);
+        compositor.useProgram(postProcessProgram);
+        compositor.activeTexture(compositor.TEXTURE0);
+        compositor.bindTexture(compositor.TEXTURE_2D, frameTexture);
+        compositor.pixelStorei(compositor.UNPACK_FLIP_Y_WEBGL, true);
+        compositor.texImage2D(
+          compositor.TEXTURE_2D,
+          0,
+          compositor.RGBA,
+          compositor.RGBA,
+          compositor.UNSIGNED_BYTE,
+          canvas
+        );
+        compositor.bindBuffer(compositor.ARRAY_BUFFER, quad);
+        compositor.enableVertexAttribArray(positionLocation);
+        compositor.vertexAttribPointer(positionLocation, 2, compositor.FLOAT, false, 0, 0);
+        compositor.uniform2f(texelSizeLocation, 1 / width, 1 / height);
+        compositor.uniform1f(redCyanLocation, settings.RED_CYAN_PIXELS);
+        compositor.uniform1f(greenMagentaLocation, settings.GREEN_MAGENTA_PIXELS);
+        compositor.uniform1f(blueYellowLocation, settings.BLUE_YELLOW_PIXELS);
+        compositor.uniform1i(chromaticEnabledLocation, settings.ENABLE_CHROMATIC_ABERRATION ? 1 : 0);
+        compositor.drawArrays(compositor.TRIANGLE_STRIP, 0, 4);
+        requestAnimationFrame(renderPostProcess);
+      }
+
+      const riveInstance = new rive.Rive({
+        src: "untitled5.riv",
+
+        canvas: canvas,
+
+        artboard: "Artboard",
+
+        autoplay: true,
+
+        stateMachines: "State Machine 1",
+
+        autoBind: true,
+
+        layout: new rive.Layout({
+          fit: rive.Fit.Layout,
+        }),
+
+        onLoad() {
+          riveInstance.resizeDrawingSurfaceToCanvas();
+
+          const vm = riveInstance.viewModelInstance;
+
+          if (vm) {
+            distanceInput = vm.number("distance");
+
+            enterInput = vm.boolean("enter");
+
+            if (soundEnabled) {
+              updateAudioVolumes(smoothDistance);
+              startAudio();
+              ensureAudioLoop();
+            } else {
+              stopAudio();
+            }
+          }
+
+          requestAnimationFrame(renderPostProcess);
+        },
+      });
+
+      window.addEventListener("resize", () => {
+        riveInstance.resizeDrawingSurfaceToCanvas();
+      });
+
+      // =============================
+      // UI
+      // =============================
+
+      const video = document.getElementById("webcam");
+
+      const camDot = document.getElementById("camDot");
+
+      const camText = document.getElementById("camText");
+
+      const personDot = document.getElementById("personDot");
+
+      const personText = document.getElementById("personText");
+
+      const distanceText = document.getElementById("distanceText");
+
+      const analysisCanvas = document.createElement("canvas");
+
+      const analysisContext = analysisCanvas.getContext("2d", {
+        willReadFrequently: false,
+      });
+
+      const parameterGroups = {
+        effects: [
+          ["ENABLE_CHROMATIC_ABERRATION", "Enable Chromatic Aberration", "boolean"],
+          ["RED_CYAN_PIXELS", "Red / Cyan Offset (pixels)", "range", -20, 20],
+          ["GREEN_MAGENTA_PIXELS", "Green / Magenta Offset (pixels)", "range", -20, 20],
+          ["BLUE_YELLOW_PIXELS", "Blue / Yellow Offset (pixels)", "range", -20, 20],
+        ],
+        panels: [
+          ["STATUS_ENABLED", "Status Panel", "boolean"],
+          ["WEBCAM_ENABLED", "Webcam Panel", "boolean"],
+        ],
+        subject: [
+          ["DIST_MIN_CM", "Minimum Distance (cm)", "number"],
+          ["DIST_MAX_CM", "Maximum Distance (cm)", "number"],
+          ["REF_SHOULDER_PX_AT_60CM", "Reference Shoulder Width (px)", "number"],
+          ["REF_DIST_CM", "Reference Distance (cm)", "number"],
+          ["SMOOTH", "Distance Smoothing", "number"],
+          ["TRACK_HOLD_MS", "Tracking Hold (ms)", "number"],
+          ["LANDMARK_CONFIDENCE", "Landmark Confidence", "number"],
+          ["smoothDistance", "Smooth Distance", "number"],
+          ["lastDistanceCm", "Last Distance (cm)", "number"],
+        ],
+        audio: [
+          ["AUDIO_SMOOTH", "Audio Smoothing", "number"],
+          ["noiseVolume", "Noise Volume", "number"],
+          ["musicVolume", "Music Volume", "number"],
+          ["soundEnabled", "Sound Enabled", "boolean"],
+        ],
+        camera: [],
+      };
+
+      const edgeButton = document.getElementById("settings-edge");
+      const settingsMenu = document.getElementById("settings-menu");
+      const settingsDraft = { ...settings };
+
+      function makeParameterRow(parameter) {
+        const [key, label, type, min, max] = parameter;
+        const row = document.createElement("div");
+        row.className = "parameter-row";
+        const name = document.createElement("label");
+        name.textContent = label;
+        name.htmlFor = `setting-${key}`;
+        row.appendChild(name);
+
+        if (type === "boolean") {
+          const input = document.createElement("input");
+          input.className = "toggle";
+          input.type = "checkbox";
+          input.id = `setting-${key}`;
+          input.checked = Boolean(settingsDraft[key]);
+          input.addEventListener("change", () => {
+            settingsDraft[key] = input.checked;
+          });
+          row.appendChild(input);
+        } else if (type === "range") {
+          const control = document.createElement("div");
+          control.className = "range-control";
+          const input = document.createElement("input");
+          input.type = "range";
+          input.id = `setting-${key}`;
+          input.min = min;
+          input.max = max;
+          input.step = 1;
+          input.value = settingsDraft[key];
+          const output = document.createElement("output");
+          output.textContent = input.value;
+          input.addEventListener("input", () => {
+            settingsDraft[key] = Number(input.value);
+            output.textContent = input.value;
+          });
+          control.append(input, output);
+          row.appendChild(control);
+        } else {
+          const input = document.createElement("input");
+          input.type = "number";
+          input.id = `setting-${key}`;
+          input.step = "any";
+          input.placeholder = String(DEFAULT_SETTINGS[key]);
+          input.value = "";
+          input.addEventListener("change", () => {
+            if (input.value !== "") settingsDraft[key] = Number(input.value);
+          });
+          row.appendChild(input);
+        }
+        return row;
+      }
+
+      Object.entries(parameterGroups).forEach(([tab, parameters]) => {
+        const panel = settingsMenu.querySelector(`[data-panel="${tab}"]`);
+        parameters.forEach((parameter) => panel.appendChild(makeParameterRow(parameter)));
+      });
+
+      settingsMenu.querySelectorAll("[data-tab]").forEach((tabButton) => {
+        tabButton.addEventListener("click", () => {
+          settingsMenu.querySelectorAll("[data-tab]").forEach((button) => {
+            button.classList.toggle("active", button === tabButton);
+          });
+          settingsMenu.querySelectorAll("[data-panel]").forEach((panel) => {
+            panel.classList.toggle("active", panel.dataset.panel === tabButton.dataset.tab);
+          });
+        });
+      });
+
+      edgeButton.addEventListener("click", () => settingsMenu.classList.add("open"));
+      document.addEventListener("mousemove", (event) => {
+        edgeButton.classList.toggle("visible", event.clientX <= 14 || settingsMenu.classList.contains("open"));
+      });
+      document.getElementById("exit-settings").addEventListener("click", () => settingsMenu.classList.remove("open"));
+      document.getElementById("apply-settings").addEventListener("click", () => {
+        Object.entries(DEFAULT_SETTINGS).forEach(([key, defaultValue]) => {
+          if (typeof defaultValue === "number" && !Number.isFinite(Number(settingsDraft[key]))) {
+            settingsDraft[key] = defaultValue;
+          }
+        });
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsDraft));
+        window.location.reload();
+      });
+
+      const resetDialog = document.getElementById("reset-dialog");
+      document.getElementById("reset-settings").addEventListener("click", () => resetDialog.classList.add("open"));
+      document.getElementById("cancel-reset").addEventListener("click", () => resetDialog.classList.remove("open"));
+      document.getElementById("confirm-reset").addEventListener("click", () => {
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
+        window.location.reload();
+      });
+
+      document.getElementById("status").style.display = settings.STATUS_ENABLED ? "block" : "none";
+      video.style.display = settings.WEBCAM_ENABLED ? "block" : "none";
+
+      function setBoolean(input, value) {
+        if (input) {
+          input.value = value;
+        }
+      }
+
+      // =============================
+      // MediaPipe
+      // =============================
+
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm"
+      );
+
+      const poseLandmarker = await PoseLandmarker.createFromOptions(
+        vision,
+
+        {
+          baseOptions: {
+            delegate: "GPU",
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
+          },
+
+          runningMode: "VIDEO",
+
+          numPoses: 1,
+
+          minPoseDetectionConfidence: 0.35,
+
+          minPosePresenceConfidence: 0.35,
+
+          minTrackingConfidence: 0.35,
+        }
+      );
+
+      // =============================
+      // Detection
+      // =============================
+
+      function landmarkIsUsable(landmark) {
+        return (
+          landmark &&
+          (landmark.visibility === undefined ||
+            landmark.visibility >= LANDMARK_CONFIDENCE) &&
+          (landmark.presence === undefined ||
+            landmark.presence >= LANDMARK_CONFIDENCE)
+        );
+      }
+
+      function distanceBetween(first, second) {
+        return Math.hypot(
+          (first.x - second.x) * video.videoWidth,
+          (first.y - second.y) * video.videoHeight
+        );
+      }
+
+      function getDistanceEstimate(landmarks) {
+        const cues = [];
+
+        if (landmarkIsUsable(landmarks[11]) && landmarkIsUsable(landmarks[12])) {
+          cues.push({ value: (REF_SHOULDER_PX_AT_60CM * REF_DIST_CM) / distanceBetween(landmarks[11], landmarks[12]), weight: 0.35 });
+        }
+
+        if (landmarkIsUsable(landmarks[23]) && landmarkIsUsable(landmarks[24])) {
+          cues.push({ value: (150 * 60) / distanceBetween(landmarks[23], landmarks[24]), weight: 0.2 });
+        }
+
+        const torsoPoints = [11, 12, 23, 24]
+          .map((index) => landmarks[index])
+          .filter(landmarkIsUsable);
+
+        if (torsoPoints.length >= 2) {
+          const torsoHeight =
+            (Math.max(...torsoPoints.map((point) => point.y)) -
+              Math.min(...torsoPoints.map((point) => point.y))) *
+            video.videoHeight;
+
+          if (torsoHeight > 12) {
+            cues.push({ value: (175 * 60) / torsoHeight, weight: 0.25 });
+          }
+        }
+
+        const visiblePoints = landmarks.filter(landmarkIsUsable);
+
+        if (visiblePoints.length >= 3) {
+          const visibleHeight =
+            (Math.max(...visiblePoints.map((point) => point.y)) -
+              Math.min(...visiblePoints.map((point) => point.y))) *
+            video.videoHeight;
+
+          if (visibleHeight > 30) {
+            cues.push({ value: (420 * 60) / visibleHeight, weight: 0.2 });
+          }
+        }
+
+        if (cues.length === 0) return null;
+
+        const totalWeight = cues.reduce((sum, cue) => sum + cue.weight, 0);
+        return cues.reduce((sum, cue) => sum + cue.value * cue.weight, 0) / totalWeight;
+      }
+
+      function drawAnalysisFrame() {
+        if (analysisCanvas.width !== video.videoWidth || analysisCanvas.height !== video.videoHeight) {
+          analysisCanvas.width = video.videoWidth;
+          analysisCanvas.height = video.videoHeight;
+        }
+
+        analysisContext.filter = "brightness(1.12) contrast(1.12) saturate(0.85)";
+        analysisContext.drawImage(video, 0, 0, analysisCanvas.width, analysisCanvas.height);
+        analysisContext.filter = "none";
+        return analysisCanvas;
+      }
+
+      function detect() {
+        ensureAudioLoop();
+
+        const result = poseLandmarker.detectForVideo(
+          drawAnalysisFrame(),
+
+          performance.now()
+        );
+
+        const people = result.landmarks.length;
+
+        if (people === 0) {
+          const tracking = performance.now() - lastPoseTime < TRACK_HOLD_MS;
+          personText.textContent = tracking ? "tracking" : "none";
+
+          personDot.style.background = tracking ? "#fc4" : "#f44";
+
+          if (!tracking) setBoolean(enterInput, false);
+
+          return;
+        }
+
+        lastPoseTime = performance.now();
+        personText.textContent = "one person";
+
+        personDot.style.background = "#4f4";
+
+        // =============================
+        // Distance
+        // =============================
+
+        const lm = result.landmarks[0];
+
+        // =============================
+        // Multi Body Distance Estimation
+        // =============================
+
+        const estimate = getDistanceEstimate(lm);
+        const cm = estimate === null ? lastDistanceCm : estimate;
+        lastDistanceCm += (cm - lastDistanceCm) * 0.25;
+
+        if (cm <= DIST_MAX_CM) {
+          setBoolean(enterInput, true);
+        } else {
+          setBoolean(enterInput, false);
+        }
+
+        const t = (lastDistanceCm - DIST_MIN_CM) / (DIST_MAX_CM - DIST_MIN_CM);
+
+        const value = Math.max(
+          0,
+
+          Math.min(
+            100,
+
+            (1 - t) * 100
+          )
+        );
+
+        smoothDistance += (value - smoothDistance) * SMOOTH;
+
+        updateAudioVolumes(smoothDistance);
+
+        if (distanceInput) {
+          distanceInput.value = smoothDistance;
+        }
+
+        distanceText.textContent = `${smoothDistance.toFixed(1)} (${lastDistanceCm.toFixed(
+          0
+        )} cm)`;
+      }
+
+      let lastTime = 0;
+
+      function loop(time) {
+        if (time - lastTime >= 33) {
+          detect();
+
+          lastTime = time;
+        }
+
+        requestAnimationFrame(loop);
+      }
+
+      // =============================
+      // Camera
+      // =============================
+
+      navigator.mediaDevices
+
+        .getUserMedia({
+          video: {
+            width: 640,
+
+            height: 480,
+          },
+        })
+
+        .then((stream) => {
+          video.srcObject = stream;
+
+          video.onloadeddata = () => {
+            camDot.style.background = "#4f4";
+
+            camText.textContent = "active";
+
+            loop();
+          };
+        })
+
+        .catch((error) => {
+          camDot.style.background = "#f44";
+
+          camText.textContent = "error";
+
+          console.error(error);
+        });
+    </script>
+  </body>
+</html>
